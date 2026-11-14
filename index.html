@@ -81,6 +81,9 @@ input[type=text],input[type=password],select,textarea{width:100%;padding:10px 12
 .tbl div{display:flex;justify-content:space-between;gap:10px;font-size:15px}
 .tbl span{color:var(--sub)}
 .tbl .me b{color:var(--sea)}
+.wrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:6px}
+.wrow button{border:0;background:none;color:var(--coral);font-weight:700;font-size:14px;padding:4px}
+.row input[type=text]{flex:1}
 .list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 .list button{width:100%;text-align:left;border:1px solid transparent;background:none;padding:10px 12px;border-radius:12px;font-size:16px}
 .list button.cur{background:var(--card);border-color:var(--line);font-weight:900}
@@ -139,6 +142,15 @@ ISL.forEach(function(il){il.c=il.c.map(function(a){
   if(a[3])c.v={form:a[3],inf:a[4],t:a[5],p:+a[6]};
   return c})});
 function isl(id){for(var i=0;i<ISL.length;i++)if(ISL[i].id===id)return ISL[i];return ISL[0]}
+/* ---------- eigene Sätze ---------- */
+var OWN=(function(){try{var o=JSON.parse(localStorage.getItem("si2-own")||"null");if(o&&o.words&&o.items)return o}catch(e){}return{words:[],items:[]}})();
+function saveOwn(){try{localStorage.setItem("si2-own",JSON.stringify(OWN))}catch(e){}}
+var TROT=["P","R","I","F","G","K","J","U","V","M"];
+function ownCard(x){var c={id:"x"+hash(x.pt),pt:x.pt,de:x.de,sym:SVG[x.sym]?x.sym:"notepad"};if(x.form&&x.pt.indexOf(x.form)>=0&&TN[x.t])c.v={form:x.form,inf:x.inf,t:x.t,p:+x.p||0};return c}
+function ownIsl(){
+  ISL=ISL.filter(function(il){return !il.own});
+  for(var i=0;i*12<OWN.items.length;i++)ISL.push({id:"e"+(i+1),t:"Eigene Sätze "+(i+1),cv:"notepad",own:1,c:OWN.items.slice(i*12,i*12+12).map(ownCard)})}
+ownIsl();
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
 var URI={};
 function uri(n){if(!URI[n])URI[n]="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(SVG[n]||"");return URI[n]}
@@ -266,14 +278,14 @@ function counts(cards,store){var t=Date.now(),n=0,d=0;cards.forEach(function(c){
 var tab="isl",idx=0,vq=null,vres=null,lq=null,lshown=false,msg="",aq=null,ares=null,acur=null;
 function render(){
   var il=isl(S.isl);
-  $("ttl").textContent=tab==="isl"?"Sprachinseln":tab==="set"?"Einstellungen":il.t;
+  $("ttl").textContent=tab==="isl"?"Sprachinseln":tab==="set"?"Einstellungen":tab==="own"?"Eigene Sätze":il.t;
   $("hb").style.visibility=tab==="set"?"hidden":"visible";
   var T=[["isl","Inseln"],["hear","Hören"],["verb","Verben"],["learn","Lernen"]];
   $("nav").innerHTML=T.map(function(x){return '<button class="'+(tab===x[0]?"on":"")+'" data-a="tab" data-v="'+x[0]+'">'+x[1]+"</button>"}).join("");
   if(tab!=="isl"&&tab!=="set")pack(S.isl,slow());
-  ({isl:vIsl,hear:vHear,verb:vVerb,learn:vLearn,set:vSet})[tab]()}
+  ({isl:vIsl,hear:vHear,verb:vVerb,learn:vLearn,set:vSet,own:vOwn})[tab]()}
 function vIsl(){
-  $("main").innerHTML='<p class="fine">Wähle ein Thema. Hören, Verben und Lernen arbeiten dann mit dieser Insel.</p><div class="grid">'+ISL.map(function(il){
+  $("main").innerHTML='<button class="btn alt" data-a="tab" data-v="own">Eigene Sätze und Wortspeicher'+(OWN.words.length?" ("+OWN.words.length+" gesammelt)":"")+'</button><p class="fine">Wähle ein Thema. Hören, Verben und Lernen arbeiten dann mit dieser Insel.</p><div class="grid">'+ISL.map(function(il){
     var k=counts(il.c,MEM.s),pc=Math.round(100*k.seen/il.c.length);
     return '<button class="isl '+(il.id===S.isl?"on":"")+'" data-a="pick" data-v="'+il.id+'"><img alt="" src="'+uri(il.cv)+'"><span class="t">'+esc(il.t)+'</span><span class="m">'+k.seen+" von "+il.c.length+' Sätzen gelernt</span><span class="bar"><i style="width:'+pc+'%"></i></span></button>'}).join("")+"</div>"}
 function hearSum(){return "Pause "+String(S.pause).replace(".",",")+" s, "+S.reps+"× Portugiesisch, Deutsch "+({after:"danach",before:"davor",off:"aus"})[S.de]}
@@ -404,6 +416,50 @@ function vLearn(){
     '<div class="grades"><button style="background:#F3A193" data-a="lgrade" data-v="0">Nochmal</button><button style="background:#F6D58E" data-a="lgrade" data-v="1">Schwer</button><button style="background:#F4B73F" data-a="lgrade" data-v="2">Gut</button><button style="background:#8FD6B1" data-a="lgrade" data-v="3">Leicht</button></div>';
   $("main").innerHTML=h}
 
+var SAMPLE=null,omsg="",obusy=false;
+try{if(window.claude&&window.claude.use)window.claude.use("sample").then(function(s){SAMPLE=s||null;if(tab==="own")vOwn()},function(){})}catch(e){}
+function ownPrompt(words){
+  var st=OWN.items.length;
+  return "Du bist mein Trainer für brasilianisches Portugiesisch. Erzeuge für jeden Eintrag unten genau einen Lernsatz.\n\n"+
+  "Regeln:\n- Brasilianisches Portugiesisch, wie Brasilianer im Alltag sprechen: Umgangssprache, aber kein Slang.\n- Höchstens 5 Wörter pro Satz.\n"+
+  "- Ist der Eintrag ein einzelnes Wort oder Ausdruck (deutsch oder portugiesisch), baue einen natürlichen portugiesischen Satz, der dieses Wort enthält.\n"+
+  "- Ist der Eintrag schon ein ganzer Satz, übernimm ihn als portugiesischen Satz (korrigiert, falls nötig).\n"+
+  "- Jeder Satz enthält genau ein konjugiertes Hauptverb in der Zeitform, die beim Eintrag steht. Codes: P Presente, R Pretérito perfeito, I Imperfeito, F Futuro mit ir (vou + Infinitiv), G estar + Gerúndio, K Futuro do pretérito, J Subjuntivo presente, U Subjuntivo imperfeito, V Subjuntivo futuro, M Imperativ in der brasilianischen Alltagsform (z. B. \"Fala!\").\n"+
+  "- form: das konjugierte Verb genau so, wie es im Satz steht (bei F und G mit Hilfsverb, z. B. \"vou comer\", \"estou comendo\"; am Satzanfang großgeschrieben).\n"+
+  "- inf: Infinitiv. p: Person (0 es/isso, 1 eu, 2 você, 3 ele, 4 ela, 5 a gente, 6 nós, 7 vocês, 8 eles/elas).\n"+
+  "- de: natürliche deutsche Übersetzung.\n- sym: der passendste Bildname aus dieser Liste: "+Object.keys(SVG).join(", ")+"\n\n"+
+  "Antworte nur mit einem JSON-Array in einem Codeblock, ein Objekt pro Eintrag in derselben Reihenfolge:\n"+
+  '[{"word":"<Eintrag>","pt":"...","de":"...","form":"...","inf":"...","t":"R","p":1,"sym":"..."}]\n\nEinträge:\n'+
+  words.map(function(w,i){return (i+1)+". "+w+" (Zeitform "+TROT[(st+i)%TROT.length]+")"}).join("\n")}
+function vOwn(){
+  var bl=ISL.filter(function(il){return il.own});
+  $("main").innerHTML='<h2>Wortspeicher</h2><p class="fine">Sammle hier Wörter oder Sätze, deutsch oder portugiesisch. Sie bleiben auf diesem Gerät, bis du sie als Sätze übernimmst.</p>'+
+  '<form id="wf" class="row"><input id="win" type="text" aria-label="Neues Wort oder neuer Satz" placeholder="z. B. Geduld, saudade oder ganzer Satz" autocomplete="off"><button class="btn" style="width:auto;padding:10px 16px;font-size:16px">Speichern</button></form>'+
+  (OWN.words.length?'<ul class="list">'+OWN.words.map(function(w,i){return '<li class="wrow"><span>'+esc(w)+'</span><button type="button" data-a="wdel" data-v="'+i+'" aria-label="'+esc(w)+' entfernen">entfernen</button></li>'}).join("")+"</ul>":'<p class="empty">Noch keine Wörter gesammelt.</p>')+
+  (OWN.words.length?'<h2>An Claude schicken</h2>'+
+    (SAMPLE?'<p class="fine">Claude erzeugt die Sätze direkt hier. Danach kopierst du das Ergebnis in die App auf deinem Home-Bildschirm.</p><button class="btn" data-a="wgen"'+(obusy?" disabled":"")+'>'+(obusy?"Claude schreibt die Sätze …":"Sätze für "+OWN.words.length+" Einträge erzeugen")+'</button>'
+    :'<p class="fine">Kopiere den Auftrag, füge ihn in Claude ein und kopiere Claudes Antwort unten wieder hinein.</p><button class="btn" data-a="wcopy">Auftrag für Claude kopieren</button>'):"")+
+  '<h2>Ergebnis einfügen</h2><textarea id="oin" rows="4" aria-label="Antwort von Claude" placeholder="Antwort von Claude hier einfügen"></textarea>'+
+  '<div class="row"><button class="btn alt" data-a="ocopy">Ergebnis kopieren</button><button class="btn" data-a="oimp">Übernehmen</button></div>'+
+  '<p class="note'+(omsg.charAt(0)==="+"?" good":"")+'" id="omsg" role="status">'+esc(omsg.replace(/^\+/,""))+'</p>'+
+  '<h2>Deine Blöcke</h2>'+(bl.length?'<div class="grid">'+bl.map(function(il){return '<button class="isl" data-a="pick" data-v="'+il.id+'"><span class="t">'+esc(il.t)+'</span><span class="m">'+il.c.length+' von 12 Sätzen</span></button>'}).join("")+'</div><button class="btn alt" data-a="ovoice">Lair-Aufnahmen erzeugen oder prüfen</button>'
+   :'<p class="empty">Noch keine eigenen Sätze. Jeder Block fasst 12 Sätze.</p>')}
+function ownParse(txt){
+  var a=txt.indexOf("["),b=txt.lastIndexOf("]");if(a<0||b<a)throw 0;
+  var arr=JSON.parse(txt.slice(a,b+1));if(!Array.isArray(arr))throw 0;
+  var have={};OWN.items.forEach(function(x){have[x.pt]=1});
+  return arr.filter(function(x){return x&&typeof x.pt==="string"&&typeof x.de==="string"&&x.pt.trim()&&!have[x.pt.trim()]}).map(function(x){
+    var o={pt:x.pt.trim(),de:x.de.trim(),sym:String(x.sym||""),word:String(x.word||"")};
+    if(!SVG[o.sym])o.sym=(CONJ[x.inf]&&CONJ[x.inf].s)||"notepad";
+    if(typeof x.form==="string"&&o.pt.indexOf(x.form)>=0&&TN[x.t]){o.form=x.form;o.inf=String(x.inf||"");o.t=x.t;o.p=Math.max(0,Math.min(8,parseInt(x.p,10)||0))}
+    return o})}
+function ownVoice(list){
+  if(!S.elKey||!S.elVoice){omsg="Die Sätze sind gespeichert. Für die Lair-Stimme trag unter „Einstellungen“ deinen ElevenLabs-Schlüssel ein und tippe dann auf „Lair-Aufnahmen erzeugen“.";if(tab==="own")vOwn();return}
+  S.el=true;elDown=false;saveS();var n=0;
+  (function next(){
+    if(n>=list.length){omsg="+"+list.length+" Sätze mit Lair vertont.";if(tab==="own")vOwn();return}
+    if($("omsg"))$("omsg").textContent="Lair spricht ein: "+(n+1)+" von "+list.length;
+    elFetch(list[n]).then(function(){n++;next()},function(e){omsg=elErr(e);if(tab==="own")vOwn()})})()}
 function vSet(){
   var vo=S.elVoices.length?S.elVoices.map(function(v){return '<option value="'+esc(v[0])+'"'+(v[0]===S.elVoice?" selected":"")+">"+esc(v[1])+"</option>"}).join(""):'<option value="">Erst Stimmen laden</option>';
   var mo=(S.elModels.length?S.elModels:[["eleven_multilingual_v2","Eleven Multilingual v2"]]).map(function(m){return '<option value="'+esc(m[0])+'"'+(m[0]===S.elModel?" selected":"")+">"+esc(m[1])+"</option>"}).join("");
@@ -462,14 +518,28 @@ var ACT={
     msg="+Erzeuge Probe …";vSet();
     elFetch("Oi, tudo bem? Vamos aprender português.").then(function(b){msg="+ElevenLabs funktioniert.";S.el=true;saveS();vSet();return playBlob(b,1)})
     .catch(function(e){elDown=true;msg=elErr(e);vSet()})},
-  bkOut:function(){var t=JSON.stringify(MEM);$("bk").value=t;try{navigator.clipboard.writeText(t).then(function(){msg="+Sicherung kopiert."},function(){})}catch(e){}$("bk").select()},
-  bkIn:function(){try{var j=JSON.parse($("bk").value);if(!j||typeof j.s!=="object"||typeof j.v!=="object")throw 0;MEM=j;if(!MEM.c)MEM.c={};saveM();vq=lq=aq=null;acur=null;msg="+Sicherung eingespielt.";vSet()}catch(e){msg="Der Text ist keine gültige Sicherung.";vSet()}}
+  wdel:function(v){OWN.words.splice(+v,1);saveOwn();vOwn()},
+  wcopy:function(){var p=ownPrompt(OWN.words);try{navigator.clipboard.writeText(p).then(function(){omsg="+Auftrag kopiert. Füge ihn in Claude ein.";vOwn()},function(){omsg="Kopieren hat nicht geklappt.";vOwn()})}catch(e){omsg="Kopieren hat nicht geklappt.";vOwn()}},
+  wgen:function(){if(!SAMPLE||obusy)return;obusy=true;omsg="";vOwn();
+    SAMPLE(ownPrompt(OWN.words),{modelTier:"default"}).then(function(r){obusy=false;omsg="+Fertig. Prüfe die Sätze und tippe auf „Ergebnis kopieren“.";vOwn();$("oin").value=r.text},
+      function(e){obusy=false;omsg=e&&e.code==="not_granted"?"Claude darf hier nicht antworten. Erlaube es in der Abfrage oder nutze den Weg über den Chat.":"Claude konnte die Sätze gerade nicht erzeugen. Versuch es gleich noch einmal.";if(e&&e.code==="not_granted")SAMPLE=null;vOwn()})},
+  ocopy:function(){var v=$("oin").value;if(!v)return;try{navigator.clipboard.writeText(v).then(function(){omsg="+Ergebnis kopiert. Füge es in der App auf deinem Home-Bildschirm ein.";vOwn()},function(){$("oin").select()})}catch(e){$("oin").select()}},
+  oimp:function(){var items;try{items=ownParse($("oin").value)}catch(e){omsg="Das sieht nicht nach Claudes Antwort aus. Kopiere den ganzen Codeblock.";vOwn();return}
+    if(!items.length){omsg="Keine neuen Sätze gefunden.";vOwn();return}
+    var used={};items.forEach(function(x){used[x.word.trim().toLowerCase()]=1});
+    OWN.words=OWN.words.filter(function(w){return !used[w.trim().toLowerCase()]});
+    OWN.items=OWN.items.concat(items);saveOwn();ownIsl();
+    omsg="+"+items.length+" Sätze übernommen.";vOwn();ownVoice(items.map(function(x){return x.pt}))},
+  ovoice:function(){ownVoice(OWN.items.map(function(x){return x.pt}))},
+  bkOut:function(){var t=JSON.stringify({s:MEM.s,v:MEM.v,c:MEM.c,own:OWN});$("bk").value=t;try{navigator.clipboard.writeText(t).then(function(){msg="+Sicherung kopiert."},function(){})}catch(e){}$("bk").select()},
+  bkIn:function(){try{var j=JSON.parse($("bk").value);if(!j||typeof j.s!=="object"||typeof j.v!=="object")throw 0;if(j.own&&j.own.words&&j.own.items){OWN=j.own;saveOwn();ownIsl()}delete j.own;MEM=j;if(!MEM.c)MEM.c={};saveM();vq=lq=aq=null;acur=null;msg="+Sicherung eingespielt.";vSet()}catch(e){msg="Der Text ist keine gültige Sicherung.";vSet()}}
 };
 document.addEventListener("touchend",function(){unlockAudio()},{passive:true});
 document.addEventListener("click",function(e){
   unlockAudio();
   var b=e.target.closest("[data-a]");if(b&&ACT[b.dataset.a])ACT[b.dataset.a](b.dataset.v,b)});
-document.addEventListener("submit",function(e){e.preventDefault();if(e.target.id==="vf")vCheck();if(e.target.id==="af")aCheck()});
+document.addEventListener("submit",function(e){e.preventDefault();
+  if(e.target.id==="wf"){var w=$("win").value.trim();if(w){OWN.words.push(w);saveOwn();omsg=""}vOwn();try{$("win").focus({preventScroll:true})}catch(x){}return}if(e.target.id==="vf")vCheck();if(e.target.id==="af")aCheck()});
 document.addEventListener("input",function(e){var t=e.target;
   if(t.id==="o-pause"){S.pause=+t.value;$("o-pv").textContent=String(S.pause).replace(".",",")+" s";$("h-sum").textContent=hearSum();saveS()}});
 document.addEventListener("change",function(e){var t=e.target;
