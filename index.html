@@ -117,6 +117,10 @@ input[type=text],input[type=password],select,textarea{width:100%;padding:10px 12
 .row .btn{flex:1}
 @media (max-width:340px){.grid{grid-template-columns:1fr}}
 </style>
+<script type="module">
+import * as ST from "https://cdn.jsdelivr.net/npm/soundtouchjs@0.1.30/dist/soundtouch.js";
+window.ST=ST;
+</script>
 </head>
 <body>
 <header><h1 id="ttl">Sprachinseln</h1><button id="hb" data-a="tab" data-v="set">Einstellungen</button></header>
@@ -224,13 +228,25 @@ function decode(buf){var c=ctx();return new Promise(function(ok,no){try{var p=c.
 function playBuf(buf,rate){
   var c=ctx();
   if(!c)return playEl(new Blob([buf],{type:"audio/mpeg"}),rate);
-  return decode(buf).then(function(ab){return new Promise(function(res){
-    var done=false,s=c.createBufferSource();s.buffer=ab;s.connect(c.destination);
+  return decode(buf).then(function(ab){var r=Math.round(rate*100)/100;
+    if(r!==1){if(window.ST)ab=stretch(ab,r);else{rate=r}}else rate=1;
+    return new Promise(function(res){
+    var done=false,s=c.createBufferSource();s.buffer=ab;if(!window.ST&&rate!==1)s.playbackRate.value=rate;s.connect(c.destination);
     function fin(){if(done)return;done=true;pend=null;try{s.onended=null;s.stop()}catch(e){}if(SRC===s)SRC=null;res()}
     s.onended=fin;pend=fin;SRC=s;
     var go=function(){try{s.start(0)}catch(e){fin()}};
     if(c.state!=="running"&&c.resume)c.resume().then(go,go);else go();
-    setTimeout(fin,ab.duration*1000+1500)})},function(){return playEl(new Blob([buf],{type:"audio/mpeg"}),rate)})}
+    setTimeout(fin,ab.duration/(s.playbackRate.value||1)*1000+1500)})},function(){return playEl(new Blob([buf],{type:"audio/mpeg"}),rate)})}
+/* Tempo ändern, ohne die Tonhöhe zu verändern (SoundTouch) */
+function stretch(ab,tempo){
+  try{
+    var d=ab.getChannelData(0),len=d.length,total=len+Math.round(ab.sampleRate*0.4);
+    var src={extract:function(tg,n,pos){var m=Math.max(0,Math.min(n,total-pos));for(var i=0;i<m;i++){var v=pos+i<len?d[pos+i]:0;tg[2*i]=v;tg[2*i+1]=v}return m}};
+    var st=new window.ST.SoundTouch();st.tempo=tempo;st.pitch=1;
+    var f=new window.ST.SimpleFilter(src,st),tmp=new Float32Array(8192),cap=Math.ceil(total/tempo)+8192,o=new Float32Array(cap),n=0;
+    for(;;){var k=f.extract(tmp,4096);if(!k)break;for(var i=0;i<k&&n<cap;i++)o[n++]=tmp[2*i];if(n>=cap)break}
+    var out=ctx().createBuffer(1,Math.max(n,1),ab.sampleRate);out.getChannelData(0).set(o.subarray(0,Math.max(n,1)));return out
+  }catch(e){return ab}}
 function playBlob(b,rate){
   if(!ctx())return playEl(b,rate);
   return (b.arrayBuffer?b.arrayBuffer():new Response(b).arrayBuffer()).then(function(buf){return playBuf(buf,rate)})}
@@ -242,7 +258,7 @@ function playEl(b,rate,tell){return new Promise(function(res){
   var p=AU.play();if(p&&p.catch)p.catch(function(){fin(tell?false:undefined)})})}
 var PACK={},PACKOK={},unlocked=false;
 var SILENT="data:audio/wav;base64,UklGRl4RAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YToRAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-function slow(){return S.rate<1}
+function slow(){return false}
 function pack(id,sl){
   if(!AIDX[id])return Promise.resolve(null);
   var k=(sl?"slow/":"")+id;
@@ -302,6 +318,7 @@ function vIsl(){
   $("main").innerHTML='<button class="btn alt" data-a="tab" data-v="own">Eigene Sätze und Wortspeicher'+(OWN.words.length?" ("+OWN.words.length+" gesammelt)":"")+'</button><p class="fine">Wähle ein Thema. Hören, Verben und Lernen arbeiten dann mit dieser Insel.</p><div class="grid">'+ISL.map(function(il){
     var k=counts(il.c,MEM.s),pc=Math.round(100*k.seen/il.c.length);
     return '<button class="isl '+(il.id===S.isl?"on":"")+'" data-a="pick" data-v="'+il.id+'"><img alt="" src="'+uri(il.cv)+'"><span class="t">'+esc(il.t)+'</span><span class="m">'+k.seen+" von "+il.c.length+" Sätzen gelernt"+(nblk(il)>1?" · "+nblk(il)+" Blöcke":"")+'</span><span class="bar"><i style="width:'+pc+'%"></i></span></button>'}).join("")+"</div>"}
+function rateTxt(){var r=Math.round(S.rate*100)/100;return String(r).replace(".",",")+"×"+(r===1?" (normal)":r<1?" (langsamer)":" (schneller)")}
 function hearSum(){return "Pause "+String(S.pause).replace(".",",")+" s, "+S.reps+"× Portugiesisch, Deutsch "+({after:"danach",before:"davor",off:"aus"})[S.de]}
 function seg(key,opts){return '<div class="seg">'+opts.map(function(o){return '<button type="button" class="'+(String(S[key])===String(o[0])?"on":"")+'" data-a="opt" data-k="'+key+'" data-v="'+o[0]+'">'+o[1]+"</button>"}).join("")+"</div>"}
 function vHear(){
@@ -309,12 +326,12 @@ function vHear(){
   $("main").innerHTML=bbar()+'<img class="pic" id="h-pic" alt="" src="'+uri(c.sym)+'"><p class="pt" id="h-pt" lang="pt-BR">'+esc(c.pt)+'</p><p class="de" id="h-de">'+esc(c.de)+'</p>'+
   '<div class="ctl"><button data-a="prev" aria-label="Vorheriger Satz">zurück</button><button class="big" id="h-play" data-a="play">'+(playing?"Pause":"Start")+'</button><button data-a="next" aria-label="Nächster Satz">weiter</button></div>'+
   '<p class="pos" id="h-pos"></p>'+
+  '<label class="field" for="o-rate"><span>Tempo: <span id="o-rv">'+rateTxt()+'</span></span><input id="o-rate" type="range" min="0.6" max="1.3" step="0.05" value="'+S.rate+'"></label>'+
   '<div class="field">Nach dem letzten Satz des Blocks'+seg("after",[["blk","Block wiederholen"],["isl","Insel wiederholen"],["next","Nächste Insel"]])+'</div>'+
   '<details id="h-det"><summary>Wiedergabe einstellen <span id="h-sum">'+hearSum()+'</span></summary><div class="set">'+
    '<label for="o-pause"><span>Pause zwischen den Sätzen: <span id="o-pv">'+String(S.pause).replace(".",",")+' s</span></span><input id="o-pause" type="range" min="0" max="10" step="0.5" value="'+S.pause+'"></label>'+
    '<div class="field">Jeden Satz auf Portugiesisch'+seg("reps",[[1,"1×"],[2,"2×"],[3,"3×"]])+'</div>'+
    '<div class="field">Deutsche Übersetzung'+seg("de",[["off","aus"],["before","davor"],["after","danach"]])+'</div>'+
-   '<div class="field">Tempo'+seg("rate",[[0.8,"langsam"],[1,"normal"]])+'</div>'+
    '<label class="chk"><input type="checkbox" id="o-beep" '+(S.beep?"checked":"")+'> Signalton zwischen den Sätzen</label>'+
   '</div></details>'+
   (window.speechSynthesis||elReady()||AIDX[S.isl]?"":'<p class="note">Dieser Browser kann nicht vorlesen.</p>')+
@@ -560,6 +577,7 @@ document.addEventListener("click",function(e){
 document.addEventListener("submit",function(e){e.preventDefault();
   if(e.target.id==="wf"){var w=$("win").value.trim();if(w){OWN.words.push(w);saveOwn();omsg=""}vOwn();try{$("win").focus({preventScroll:true})}catch(x){}return}if(e.target.id==="vf")vCheck();if(e.target.id==="af")aCheck()});
 document.addEventListener("input",function(e){var t=e.target;
+  if(t.id==="o-rate"){S.rate=+t.value;$("o-rv").textContent=rateTxt();saveS()}
   if(t.id==="o-pause"){S.pause=+t.value;$("o-pv").textContent=String(S.pause).replace(".",",")+" s";$("h-sum").textContent=hearSum();saveS()}});
 document.addEventListener("change",function(e){var t=e.target;
   if(t.id==="o-beep"){S.beep=t.checked;saveS()}

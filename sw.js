@@ -1,6 +1,6 @@
 // Offline-Speicher für die Sprachinsel. Die Seite selbst wird zuerst frisch geladen,
 // Aufnahmen, Bilder und Schriften kommen nach dem ersten Laden aus dem Speicher.
-const CACHE = "sprachinsel-v5";
+const CACHE = "sprachinsel-v6";
 const CORE = ["./", "index.html", "manifest.webmanifest", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -16,7 +16,7 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   const isPage = req.mode === "navigate" || url.pathname.endsWith("/") || url.pathname.endsWith("index.html");
-  const isAsset = url.origin === location.origin || /fonts\.(googleapis|gstatic)\.com$/.test(url.hostname);
+  const isAsset = url.origin === location.origin || /fonts\.(googleapis|gstatic)\.com$|^cdn\.jsdelivr\.net$/.test(url.hostname);
   if (!isAsset) return;
   if (isPage) {
     e.respondWith(fetch(req).then((r) => { const c = r.clone(); caches.open(CACHE).then((x) => x.put(req, c)); return r; })
