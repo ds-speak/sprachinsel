@@ -178,7 +178,7 @@ function $(id){return document.getElementById(id)}
 var LS={get:function(k,d){try{var s=localStorage.getItem(k);return s?JSON.parse(s):d}catch(e){return d}},
         set:function(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 var S=Object.assign({vm:"satz",ct:["P","R","I","F","G","K","J","U","V"],isl:"ge",pause:2,reps:1,de:"after",rate:1,beep:false,auto:true,after:"next",
-  el:false,elKey:"",elVoice:"",elModel:"eleven_multilingual_v2",elVoices:[],elModels:[]},LS.get("si2-set",{}));
+  el:false,elKey:"",elVoice:"",elModel:"eleven_v4",elVoices:[],elModels:[]},LS.get("si2-set",{}));
 if(!S.elVoice){S.elVoice="CwhRBWXzGAHq8TQ4Fs17";if(!S.elVoices.length)S.elVoices=[["CwhRBWXzGAHq8TQ4Fs17","Lair"]]}
 var MEM=LS.get("si2-mem",{s:{},v:{}});
 if(!MEM.s)MEM.s={};if(!MEM.v)MEM.v={};if(!MEM.c)MEM.c={};
@@ -206,10 +206,12 @@ function cachePut(k,b){memCache[k]=b;idb().then(function(db){if(!db)return;try{d
 function elFetch(text){
   var k=S.elVoice+"|"+S.elModel+"|"+text;
   return cacheGet(k).then(function(b){if(b)return b;
-    var body={text:text,model_id:S.elModel};
-    if(S.elModel!=="eleven_multilingual_v2")body.language_code="pt";
-    return fetch("https://api.elevenlabs.io/v1/text-to-speech/"+encodeURIComponent(S.elVoice)+"?output_format=mp3_44100_128",
-      {method:"POST",headers:{"xi-api-key":S.elKey,"Content-Type":"application/json"},body:JSON.stringify(body)})
+    var vs={stability:0.5,similarity_boost:0.36,clone_strength:0.45};
+    function send(v){var body={text:text,model_id:S.elModel,voice_settings:v};
+      if(S.elModel!=="eleven_multilingual_v2")body.language_code="pt";
+      return fetch("https://api.elevenlabs.io/v1/text-to-speech/"+encodeURIComponent(S.elVoice)+"?output_format=mp3_44100_128",
+        {method:"POST",headers:{"xi-api-key":S.elKey,"Content-Type":"application/json"},body:JSON.stringify(body)})}
+    return send(vs).then(function(r){if((r.status===400||r.status===422)&&vs.clone_strength!==undefined){delete vs.clone_strength;return send(vs)}return r})
       .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.blob()})
       .then(function(bl){cachePut(k,bl);return bl})})}
 var SRC=null;
@@ -502,7 +504,7 @@ function ownVoice(list){
     elFetch(list[n]).then(function(){n++;next()},function(e){omsg=elErr(e);if(tab==="own")vOwn()})})()}
 function vSet(){
   var vo=S.elVoices.length?S.elVoices.map(function(v){return '<option value="'+esc(v[0])+'"'+(v[0]===S.elVoice?" selected":"")+">"+esc(v[1])+"</option>"}).join(""):'<option value="">Erst Stimmen laden</option>';
-  var mo=(S.elModels.length?S.elModels:[["eleven_multilingual_v2","Eleven Multilingual v2"]]).map(function(m){return '<option value="'+esc(m[0])+'"'+(m[0]===S.elModel?" selected":"")+">"+esc(m[1])+"</option>"}).join("");
+  var mo=(S.elModels.length?S.elModels:[["eleven_v4","Eleven v4"]]).map(function(m){return '<option value="'+esc(m[0])+'"'+(m[0]===S.elModel?" selected":"")+">"+esc(m[1])+"</option>"}).join("");
   $("main").innerHTML='<h2>Stimme für Portugiesisch</h2>'+
   '<p class="fine">Alle Sätze sind bereits mit deiner ElevenLabs-Stimme Lair aufgenommen und in der App enthalten. Die Angaben hier brauchst du nur, wenn die App ohne diese Aufnahmen läuft. Dann wird jeder Satz einmal über deinen Schlüssel erzeugt, der auf diesem Gerät bleibt.</p>'+
   '<label class="field" for="el-key">ElevenLabs API-Schlüssel<input id="el-key" type="password" autocomplete="off" value="'+esc(S.elKey)+'"></label>'+
@@ -588,6 +590,7 @@ document.addEventListener("change",function(e){var t=e.target;
   if(t.id==="o-beep"){S.beep=t.checked;saveS()}
   if(t.id&&t.id.indexOf("el-")===0)readSet()});
 if(!isl(S.isl)||isl(S.isl).id!==S.isl)S.isl=ISL[0].id;
+if(S.elModel==="eleven_multilingual_v2"){S.elModel="eleven_v4";saveS()}
 if(S.auto===false&&!LS.get("si2-set",{}).after){S.after="blk";saveS()}
 render();
 if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js")}catch(e){}}
