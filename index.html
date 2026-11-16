@@ -301,15 +301,38 @@ function beep(){return new Promise(function(r){try{
   o.connect(g);g.connect(AC.destination);o.start();o.stop(t+0.27);setTimeout(r,330)}catch(e){r()}})}
 
 /* ---------- spaced repetition ---------- */
+/* Wiederholung nach Anki (SM-2): Lernschritte 1 und 10 Minuten, dann 1 Tag; Leicht 4 Tage;
+   Startfaktor 2,5; Nochmal bei gelernten Karten: 10 Minuten neu lernen, danach 1 Tag. */
+var MIN=60000,STEPS=[1,10],RESTEP=[10],AHEAD=20*MIN;
+function norm2(o){if(!o)return{q:"new",st:0,i:0,e:2.5,d:0,r:0,l:0};
+  var s={q:o.q,st:o.st|0,i:o.i||0,e:o.e||2.5,d:o.d||0,r:o.r||0,l:o.l||0};
+  if(!s.q)s.q=s.i>0?"review":"learn";return s}
 function calc(old,g){
-  var s=old?{r:old.r,i:old.i,e:old.e,d:old.d}:{r:0,i:0,e:2.3,d:0};
-  if(g===0){s.r=0;s.i=0;s.e=Math.max(1.3,s.e-0.2);s.d=Date.now()+60000}
+  var s=norm2(old),now=Date.now();
+  function step(m){s.d=now+m*MIN}
+  function rev(days){s.q="review";s.st=0;s.i=Math.max(1,Math.round(days));s.d=now+s.i*DAY}
+  if(s.q==="new"||s.q==="learn"){s.q="learn";
+    if(g===0){s.st=0;step(STEPS[0])}
+    else if(g===1){step(s.st===0?(STEPS[0]+STEPS[1])/2:STEPS[s.st])}
+    else if(g===2){s.st++;if(s.st>=STEPS.length){rev(1);s.r++}else step(STEPS[s.st])}
+    else{rev(4);s.r++}}
+  else if(s.q==="relearn"){
+    if(g===0){s.st=0;step(RESTEP[0])}
+    else if(g===1){step(RESTEP[0]*1.5)}
+    else if(g===2){rev(s.i);s.r++}
+    else{rev(s.i+1);s.r++}}
   else{
-    if(g===1){s.i=Math.max(1,Math.round(Math.max(s.i,1)*1.2));s.e=Math.max(1.3,s.e-0.15)}
-    else if(g===2){s.i=s.r===0?1:(s.r===1?3:Math.round(s.i*s.e))}
-    else{s.i=s.r===0?3:Math.round(Math.max(s.i,1)*s.e*1.3);s.e+=0.15}
-    s.r++;s.d=Date.now()+s.i*DAY}
+    if(g===0){s.l++;s.r=0;s.e=Math.max(1.3,s.e-0.2);s.i=1;s.q="relearn";s.st=0;step(RESTEP[0])}
+    else if(g===1){s.e=Math.max(1.3,s.e-0.15);rev(Math.max(s.i+1,s.i*1.2));s.r++}
+    else if(g===2){rev(Math.max(s.i+1,s.i*s.e));s.r++}
+    else{rev(Math.max(s.i+1,s.i*s.e*1.3));s.e+=0.15;s.r++}}
   return s}
+function learning(s){return s&&(s.q==="learn"||s.q==="relearn")}
+function inTxt(s){var ms=s.d-Date.now();
+  if(ms<60*MIN){var m=Math.max(1,Math.round(ms/MIN));return "in "+m+" Min"}
+  if(ms<DAY){var h=Math.round(ms/3600000);return "in "+h+" Std"}
+  return "in "+span(Math.round(ms/DAY))}
+function requeue(q,c,s){if(!learning(s))return;var ms=s.d-Date.now(),pos=ms<=2*MIN?Math.min(3,q.length):q.length;q.splice(pos,0,c)}
 function sched(store,id,g){store[id]=calc(store[id],g);saveM()}
 function span(days){
   if(days<1)return "gleich nochmal";
@@ -319,14 +342,15 @@ function span(days){
   var y=Math.round(days/36.5)/10;return String(y).replace(".",",")+(y===1?" Jahr":" Jahren")}
 function when(s){
   if(!s)return "noch nicht geübt";
-  var d=s.d-Date.now();if(d<=0)return "heute fällig";
+  var d=s.d-Date.now();if(d<=0)return "jetzt fällig";
+  if(d<DAY&&learning(s))return inTxt(s);
   var days=Math.ceil(d/DAY);if(d<DAY&&new Date(s.d).getDate()===new Date().getDate())return "heute";
   return days===1?"morgen":"in "+span(days)}
 var LV=[["neu","Neu","lv0"],["lernen","Am Lernen","lv1"],["gut","Gut","lv2"],["sicher","Sicher","lv3"],["top","Gemeistert","lv4"]];
-function level(s){if(!s)return LV[0];if(s.r===0||s.i<7)return LV[1];if(s.i<21)return LV[2];if(s.i<60)return LV[3];return LV[4]}
+function level(s){if(!s)return LV[0];if(learning(s)||s.i<7)return LV[1];if(s.i<21)return LV[2];if(s.i<60)return LV[3];return LV[4]}
 function queue(cards,store){
   var t=Date.now(),due=[],fresh=[];
-  cards.forEach(function(c){var s=store[c.id];if(!s)fresh.push(c);else if(s.d<=t)due.push(c)});
+  cards.forEach(function(c){var s=store[c.id];if(!s)fresh.push(c);else if(s.d<=t||(learning(s)&&s.d<=t+AHEAD))due.push(c)});
   due.sort(function(a,b){return store[a.id].d-store[b.id].d});
   return due.concat(fresh.slice(0,10))}
 function counts(cards,store){var t=Date.now(),n=0,d=0;cards.forEach(function(c){var s=store[c.id];if(s){n++;if(s.d<=t)d++}});return{seen:n,due:d}}
@@ -535,7 +559,7 @@ function vLearn(){
   if(!lshown)h+='<p class="hint">Sag den Satz laut auf Portugiesisch.</p><button class="btn" data-a="lshow">Antwort zeigen</button>';
   else{var G=[["Nochmal","#F3A193"],["Schwer","#F6D58E"],["Gut","#F4B73F"],["Leicht","#8FD6B1"]],old=MEM.s[c.id];
     h+='<p class="pt" lang="pt-BR">'+esc(c.pt)+'</p><button class="btn alt" data-a="lsay">Anhören</button><div class="grades">'+
-    G.map(function(x,g){var n=calc(old,g);return '<button style="background:'+x[1]+'" data-a="lgrade" data-v="'+g+'">'+x[0]+'<small>'+(g===0?"gleich nochmal":"in "+span(n.i))+"</small></button>"}).join("")+"</div>"}
+    G.map(function(x,g){var n=calc(old,g);return '<button style="background:'+x[1]+'" data-a="lgrade" data-v="'+g+'">'+x[0]+'<small>'+inTxt(n)+"</small></button>"}).join("")+"</div>"}
   $("main").innerHTML=h+overview()}
 var ovAll=false;
 function overview(){
@@ -545,7 +569,7 @@ function overview(){
   return '<details class="ovd"'+(ovOpen?" open":"")+'><summary>Übersicht: wie gut sitzen die Sätze? <span>'+LV.map(function(L,i){return cnt[i]?cnt[i]+" "+L[1]:""}).filter(Boolean).join(" · ")+'</span></summary>'+
     '<div class="seg" style="margin:4px 0 10px">'+[[0,"Dieser Block"],[1,"Ganze Insel"]].map(function(o){return '<button type="button" class="'+((ovAll?1:0)===o[0]?"on":"")+'" data-a="ovall" data-v="'+o[0]+'">'+o[1]+"</button>"}).join("")+"</div>"+
     '<ul class="list">'+rows.join("")+"</ul>"+
-    '<p class="fine">Stufen nach dem aktuellen Abstand: Am Lernen unter 7 Tagen, Gut ab 7, Sicher ab 21, Gemeistert ab 60 Tagen.</p></details>'}
+    '<p class="fine">Neue Sätze kommen wie bei Anki erst nach 1 und 10 Minuten wieder, dann nach 1 Tag. Stufen: Am Lernen unter 7 Tagen, Gut ab 7, Sicher ab 21, Gemeistert ab 60 Tagen.</p></details>'}
 var ovOpen=false;
 
 var SAMPLE=null,omsg="",obusy=false;
@@ -629,16 +653,16 @@ var ACT={
   opt:function(v,b){var k=b.dataset.k;S[k]=(k==="de"||k==="after")?v:+v;saveS();if(k==="after"&&BG.on)AU.loop=v==="blk";var bs=b.parentNode.children;for(var i=0;i<bs.length;i++)bs[i].className=bs[i]===b?"on":"";if($("h-sum"))$("h-sum").textContent=hearSum()},
   vmore:function(){var il=cur(),cards=il.c.filter(function(c){return c.v});vq=queue(cards,MEM.v);if(!vq.length)vq=cards.slice().sort(function(a,b){return MEM.v[a.id].d-MEM.v[b.id].d}).slice(0,10);vVerb()},
   vsay:function(){halt();sayPt(vq[0].pt)},
-  vnext:function(){var c=vq.shift();if(!vres.ok)vq.push(c);vres=null;vVerb()},
+  vnext:function(){var c=vq.shift();requeue(vq,c,MEM.v[c.id]);vres=null;vVerb()},
   vmode:function(v){halt();S.vm=v;saveS();vres=ares=null;vVerb()},
   ttog:function(v){var i=S.ct.indexOf(v);if(i>=0){if(S.ct.length>1)S.ct.splice(i,1)}else S.ct.push(v);saveS();aq=null;ares=null;acur=null;vVerb()},
   amore:function(){var cards=aCards(cur());aq=queue(cards,MEM.c);if(!aq.length)aq=cards.slice().sort(function(a,b){return MEM.c[a.id].d-MEM.c[b.id].d}).slice(0,10);vVerb()},
   asay:function(){halt();devSay(aSentence(),"pt-BR",S.rate*0.95)},
-  anext:function(){var c=aq.shift();if(!ares.ok)aq.push(c);ares=null;acur=null;vVerb()},
+  anext:function(){var c=aq.shift();requeue(aq,c,MEM.c[c.id]);ares=null;acur=null;vVerb()},
   lmore:function(){var il=cur();lq=queue(il.c,MEM.s);if(!lq.length)lq=il.c.slice().sort(function(a,b){return MEM.s[a.id].d-MEM.s[b.id].d}).slice(0,10);vLearn()},
   lshow:function(){lshown=true;vLearn();sayPt(lq[0].pt)},
   lsay:function(){halt();sayPt(lq[0].pt)},
-  lgrade:function(v){halt();var c=lq.shift();sched(MEM.s,c.id,+v);if(+v===0)lq.push(c);lshown=false;vLearn()},
+  lgrade:function(v){halt();var c=lq.shift();sched(MEM.s,c.id,+v);requeue(lq,c,MEM.s[c.id]);lshown=false;vLearn()},
   elLoad:function(){readSet();if(!S.elKey){msg="Trag zuerst deinen API-Schlüssel ein.";vSet();return}
     msg="+Lade Stimmen …";vSet();var H={headers:{"xi-api-key":S.elKey}};
     fetch("https://api.elevenlabs.io/v1/voices",H).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()})
