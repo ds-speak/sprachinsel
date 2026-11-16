@@ -1,6 +1,6 @@
 // Offline-Speicher für die Sprachinsel. Die Seite selbst wird zuerst frisch geladen,
 // Aufnahmen, Bilder und Schriften kommen nach dem ersten Laden aus dem Speicher.
-const CACHE = "sprachinsel-v12";
+const CACHE = "sprachinsel-v13";
 const CORE = ["./", "index.html", "manifest.webmanifest", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
