@@ -683,10 +683,10 @@ function vAll(h){
   var il=cur(),cards=aCards(il);
   h+='<div class="chips" role="group" aria-label="Zeitformen">'+TORD.map(function(T){return '<button type="button" class="chip '+(S.ct.indexOf(T)>=0?"on":"")+'" data-a="ttog" data-v="'+T+'" aria-pressed="'+(S.ct.indexOf(T)>=0)+'">'+TS[T]+"</button>"}).join("")+"</div>";
   if(!cards.length){$("main").innerHTML=h+'<p class="empty">Diese Insel hat keine Verben für den Zeitformentrainer.</p>';return}
-  if(!aq)aq=queue(cards,MEM.c);
+  if(!aq){aq=queue(cards,MEM.c);PRAC.a=false}
   var k=counts(cards,MEM.c);
   h+='<div class="stats"><div><b>'+aq.length+'</b>in dieser Runde</div><div><b>'+k.due+'</b>fällig</div><div><b>'+k.seen+" / "+cards.length+'</b>geübt</div></div>';
-  if(!aq.length){$("main").innerHTML=h+'<p class="empty">Für diese Insel ist gerade nichts fällig.</p><button class="btn" data-a="amore">Zehn weitere Formen üben</button>';return}
+  if(!aq.length){PRAC.a=false;$("main").innerHTML=h+'<p class="empty">Für diese Insel ist gerade nichts fällig.</p><button class="btn alt" data-a="amore">Zehn Formen trotzdem üben (ändert keine Abstände)</button>';return}
   var c=aq[0],V=CONJ[c.inf],q=aSetup(c);
   h+='<div class="tags"><span class="tag">'+esc(q.label)+'</span><button type="button" class="tag t2" data-a="gopen" data-v="'+c.T+'" title="Erklärung öffnen">'+TN[c.T]+' ⓘ</button></div>'+
      '<p class="hint">'+TH[c.T]+' · Verb: <b lang="pt-BR">'+esc(c.inf)+'</b> = '+esc(V.d)+'</p>'+
@@ -705,14 +705,14 @@ function vAll(h){
 function aCheck(){
   var g=$("ain").value,al=acur.form.split("|"),ok=al.some(function(f){return norm(g)===norm(f)}),acc=!ok&&al.some(function(f){return strip(g)===strip(f)});
   ares={ok:ok||acc,accent:acc,given:g.trim()};
-  sched(MEM.c,aq[0].id,ok?2:acc?1:0);
+  if(!PRAC.a)sched(MEM.c,aq[0].id,ok?2:acc?1:0);else if(!ares.ok)aq.push(aq[0]);
   vVerb();halt();devSay(aSentence(),"pt-BR",S.rate*0.95)}
 function vSatz(h){
   var il=cur(),cards=il.c.filter(function(c){return c.v});
-  if(!vq)vq=queue(cards,MEM.v);
+  if(!vq){vq=queue(cards,MEM.v);PRAC.v=false}
   var k=counts(cards,MEM.v);
   h+='<div class="stats"><div><b>'+vq.length+'</b>in dieser Runde</div><div><b>'+k.due+'</b>fällig</div><div><b>'+k.seen+" / "+cards.length+'</b>geübt</div></div>';
-  if(!vq.length){$("main").innerHTML=h+'<p class="empty">Für diese Insel ist gerade nichts fällig.</p><button class="btn" data-a="vmore">Zehn weitere Sätze üben</button>';return}
+  if(!vq.length){PRAC.v=false;$("main").innerHTML=h+'<p class="empty">In diesem Block ist gerade nichts fällig.</p><button class="btn alt" data-a="vmore">Trotzdem üben (ändert keine Abstände)</button>';return}
   var c=vq[0],v=c.v,at=c.pt.indexOf(v.form),a=c.pt.slice(0,at),b=c.pt.slice(at+v.form.length);
   h+='<div class="tags"><span class="tag">'+PN[v.p]+'</span><button type="button" class="tag t2" data-a="gopen" data-v="'+v.t+'" title="Erklärung öffnen">'+TN[v.t]+' ⓘ</button></div>'+
      '<p class="hint">'+TH[v.t]+' · Verb: <b lang="pt-BR">'+esc(v.inf)+'</b></p>'+
@@ -731,10 +731,10 @@ function strip(s){return norm(s).normalize("NFD").replace(/[̀-ͯ]/g,"")}
 function vCheck(){
   var c=vq[0],g=$("vin").value,ok=norm(g)===norm(c.v.form),acc=!ok&&strip(g)===strip(c.v.form);
   vres={ok:ok||acc,accent:acc,given:g.trim()};
-  sched(MEM.v,c.id,ok?2:acc?1:0);
+  if(!PRAC.v)sched(MEM.v,c.id,ok?2:acc?1:0);else if(!vres.ok)vq.push(c);
   vVerb();sayPt(c.pt)}
 
-var TODAY=false;
+var TODAY=false,PRAC={l:false,v:false,a:false};
 function allDue(){var now=Date.now(),out=[];ISL.forEach(function(il){il.c.forEach(function(c){var s=MEM.s[c.id];
   if(s&&(s.d<=now||(learning(s)&&s.d<=now+AHEAD)))out.push(c)})});
   out.sort(function(a,b){return MEM.s[a.id].d-MEM.s[b.id].d});return out}
@@ -755,13 +755,15 @@ function cardBody(c){
   if(!lshown)return '<p class="hint">Sag den Satz laut auf Portugiesisch.</p><button class="btn" data-a="lshow">Antwort zeigen</button>';
   var G=[["Nochmal","#F3A193"],["Schwer","#F6D58E"],["Gut","#F4B73F"],["Leicht","#8FD6B1"]],old=MEM.s[c.id];
   return '<p class="pt" lang="pt-BR">'+esc(c.pt)+'</p>'+vinfo(c)+'<button class="btn alt" data-a="lsay">Anhören</button><div class="grades">'+
-    G.map(function(x,g){var n=calc(old,g);return '<button style="background:'+x[1]+'" data-a="lgrade" data-v="'+g+'">'+x[0]+'<small>'+inTxt(n)+"</small></button>"}).join("")+"</div>"}
+    G.map(function(x,g){var n=calc(old,g);return '<button style="background:'+x[1]+'" data-a="lgrade" data-v="'+g+'">'+x[0]+'<small>'+(PRAC.l&&!TODAY?(g?"nur Übung":"gleich nochmal"):inTxt(n))+"</small></button>"}).join("")+"</div>"+(PRAC.l&&!TODAY?'<p class="fine">Freies Üben: Deine Antworten ändern keine Wiederholungstermine.</p>':"")}
 function vLearn(){
   if(TODAY){vToday();return}
-  var il=cur();if(!lq)lq=queue(il.c,MEM.s);
+  var il=cur();if(!lq){lq=queue(il.c,MEM.s);PRAC.l=false}
   var k=counts(il.c,MEM.s),nd=allDue().length;
   var h=bbar()+(nd?'<button type="button" class="btn alt" data-a="today">Heute fällig aus allen Inseln: '+nd+" Sätze</button>":"")+'<div class="stats"><div><b>'+lq.length+'</b>in dieser Runde</div><div><b>'+k.due+'</b>fällig</div><div><b>'+k.seen+" / "+il.c.length+'</b>gelernt</div></div>';
-  if(!lq.length){$("main").innerHTML=h+'<p class="empty">In diesem Block ist gerade nichts fällig.</p><button class="btn" data-a="lmore">Zehn weitere Sätze lernen</button>'+overview();return}
+  if(!lq.length){PRAC.l=false;$("main").innerHTML=h+'<p class="empty">In diesem Block ist gerade nichts fällig. Die nächsten Wiederholungen kommen erst zu ihrem Termin (siehe Übersicht).</p>'+
+    (il.b+1<il.nb?'<button class="btn" data-a="blk" data-v="'+(il.b+1)+'">Weiter mit Block '+(il.b+2)+' (neue Sätze)</button>':"")+
+    '<button class="btn alt" data-a="lmore">Block trotzdem üben (ändert keine Abstände)</button>'+overview();return}
   var c=lq[0];lq.slice(0,4).forEach(function(x){packBuf(x.pt)});
   h+='<img class="pic" alt="" src="'+uri(c.sym)+'"><p class="de big">'+esc(c.de)+"</p>"+cardBody(c);
   $("main").innerHTML=h+overview()}
@@ -887,18 +889,18 @@ var ACT={
   next:function(){if(BG.on&&playing){bgSeek(idx+1);return}var w=playing;halt();advance(1,false);if(w)loop();else paintHear(true)},
   jump:function(v){if(BG.on&&playing){bgSeek(+v);return}var w=playing;halt();idx=+v;if(w)loop();else{paintHear(false);sayPt(cur().c[idx].pt)}},
   opt:function(v,b){var k=b.dataset.k;S[k]=(k==="de"||k==="after")?v:+v;saveS();if(k==="after"&&BG.on)AU.loop=v==="blk";var bs=b.parentNode.children;for(var i=0;i<bs.length;i++)bs[i].className=bs[i]===b?"on":"";if($("h-sum"))$("h-sum").textContent=hearSum()},
-  vmore:function(){var il=cur(),cards=il.c.filter(function(c){return c.v});vq=queue(cards,MEM.v);if(!vq.length)vq=cards.slice().sort(function(a,b){return MEM.v[a.id].d-MEM.v[b.id].d}).slice(0,10);vVerb()},
+  vmore:function(){var il=cur(),cards=il.c.filter(function(c){return c.v});vq=queue(cards,MEM.v);PRAC.v=!vq.length;if(PRAC.v)vq=cards.slice();vres=null;vVerb()},
   vsay:function(){halt();sayPt(vq[0].pt)},
-  vnext:function(){var c=vq.shift();requeue(vq,c,MEM.v[c.id]);vres=null;vVerb()},
+  vnext:function(){var c=vq.shift();if(!PRAC.v)requeue(vq,c,MEM.v[c.id]);vres=null;vVerb()},
   vmode:function(v){halt();S.vm=v;saveS();vres=ares=null;vVerb()},
   ttog:function(v){var i=S.ct.indexOf(v);if(i>=0){if(S.ct.length>1)S.ct.splice(i,1)}else S.ct.push(v);saveS();aq=null;ares=null;acur=null;vVerb()},
-  amore:function(){var cards=aCards(cur());aq=queue(cards,MEM.c);if(!aq.length)aq=cards.slice().sort(function(a,b){return MEM.c[a.id].d-MEM.c[b.id].d}).slice(0,10);vVerb()},
+  amore:function(){var cards=aCards(cur());aq=queue(cards,MEM.c);PRAC.a=!aq.length;if(PRAC.a)aq=cards.slice().sort(function(a,b){return MEM.c[a.id].d-MEM.c[b.id].d}).slice(0,10);ares=null;acur=null;vVerb()},
   asay:function(){halt();devSay(aSentence(),"pt-BR",S.rate*0.95)},
-  anext:function(){var c=aq.shift();requeue(aq,c,MEM.c[c.id]);ares=null;acur=null;vVerb()},
-  lmore:function(){var il=cur();lq=queue(il.c,MEM.s);if(!lq.length)lq=il.c.slice().sort(function(a,b){return MEM.s[a.id].d-MEM.s[b.id].d}).slice(0,10);vLearn()},
+  anext:function(){var c=aq.shift();if(!PRAC.a)requeue(aq,c,MEM.c[c.id]);ares=null;acur=null;vVerb()},
+  lmore:function(){var il=cur();lq=queue(il.c,MEM.s);PRAC.l=!lq.length;if(PRAC.l)lq=il.c.slice();lshown=false;vLearn()},
   lshow:function(){halt();lshown=true;vLearn();var c=lq[0];sayPt(c.pt)},
   lsay:function(){halt();sayPt(lq[0].pt)},
-  lgrade:function(v){halt();var c=lq.shift();sched(MEM.s,c.id,+v);requeue(lq,c,MEM.s[c.id]);lshown=false;render()},
+  lgrade:function(v){halt();var c=lq.shift();if(PRAC.l&&!TODAY){if(+v===0)lq.push(c)}else{sched(MEM.s,c.id,+v);requeue(lq,c,MEM.s[c.id])}lshown=false;render()},
   elLoad:function(){readSet();if(!S.elKey){msg="Trag zuerst deinen API-Schlüssel ein.";vSet();return}
     msg="+Lade Stimmen …";vSet();var H={headers:{"xi-api-key":S.elKey}};
     fetch("https://api.elevenlabs.io/v1/voices",H).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()})
